@@ -97,7 +97,7 @@ def run(config) -> None:
         mqtt_handler.connect()
 
         logger.info(
-            "Bridge running: mesh_id='%s', publishing to '%s/%s/rx'",
+            "Bridge running: mesh_id='%s', publishing to '%s/%s'",
             config.mesh.id,
             config.mqtt.root_topic,
             config.mesh.id,
