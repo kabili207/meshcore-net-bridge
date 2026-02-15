@@ -1,0 +1,18 @@
+[project]
+name = "meshcore-net-bridge"
+version = "0.1.0"
+description = "MQTT bridge for MeshCore RS232 serial protocol"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "paho-mqtt>=2.0",
+    "pyserial>=3.5",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+meshcore-bridge = "meshcore_bridge.main:main"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

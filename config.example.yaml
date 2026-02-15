@@ -1,0 +1,13 @@
+mqtt:
+  broker: "mqtt.example.com"
+  port: 1883
+  # username: ""
+  # password: ""
+  root_topic: "meshcore"
+
+mesh:
+  id: "cabin"
+
+serial:
+  port: "/dev/ttyAMA0"
+  baud: 115200
