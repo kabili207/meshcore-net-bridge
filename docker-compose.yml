@@ -1,0 +1,8 @@
+services:
+  meshcore-bridge:
+    build: .
+    restart: unless-stopped
+    devices:
+      - /dev/ttyAMA0:/dev/ttyAMA0
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
