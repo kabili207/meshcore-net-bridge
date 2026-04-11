@@ -3,9 +3,9 @@ mqtt:
   port: 1883
   # username: ""
   # password: ""
-  root_topic: "meshcore"
+  topic: "meshcore/bridge"
 
-mesh:
+node:
   id: "cabin"
 
 serial:

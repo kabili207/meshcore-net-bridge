@@ -1,6 +1,5 @@
 """MQTT handler for MeshCore bridge."""
 
-import base64
 import logging
 from collections.abc import Callable
 
@@ -21,15 +20,15 @@ class MqttHandler:
     def __init__(
         self,
         config: MqttConfig,
-        mesh_id: str,
+        node_id: str,
         on_packet: Callable[[bytes], None],
     ) -> None:
         self._config = config
-        self._mesh_id = mesh_id
+        self._node_id = node_id
         self._on_packet = on_packet
         self._connected = False
 
-        client_id = f"meshcore-bridge-{mesh_id}"
+        client_id = f"mc-bridge-{node_id}"
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
         self._client.on_connect = self._handle_connect
         self._client.on_disconnect = self._handle_disconnect
@@ -47,14 +46,9 @@ class MqttHandler:
         return self._connected
 
     @property
-    def _rx_topic(self) -> str:
-        """Topic for publishing packets received from local mesh."""
-        return f"{self._config.root_topic}/{self._mesh_id}"
-
-    @property
-    def _subscribe_pattern(self) -> str:
-        """Topic pattern for receiving packets from other meshes."""
-        return f"{self._config.root_topic}/+"
+    def _topic(self) -> str:
+        """Topic for publishing and subscribing."""
+        return self._config.topic
 
     def connect(self) -> None:
         """Connect to MQTT broker and start network loop."""
@@ -78,9 +72,8 @@ class MqttHandler:
             logger.debug("Cannot publish: not connected to MQTT broker")
             return
 
-        encoded = base64.b64encode(payload).decode("ascii")
-        self._client.publish(self._rx_topic, encoded)
-        logger.debug("Published packet to %s: %d bytes", self._rx_topic, len(payload))
+        self._client.publish(self._topic, payload)
+        logger.debug("Published packet to %s: %d bytes", self._topic, len(payload))
 
     def _handle_connect(
         self,
@@ -93,9 +86,8 @@ class MqttHandler:
         if reason_code == 0:
             self._connected = True
             logger.info("Connected to MQTT broker")
-            # Resubscribe on every connect (handles reconnection)
-            client.subscribe(self._subscribe_pattern)
-            logger.info("Subscribed to %s", self._subscribe_pattern)
+            client.subscribe(self._topic)
+            logger.info("Subscribed to %s", self._topic)
         else:
             self._connected = False
             logger.error("MQTT connection failed: %s", reason_code)
@@ -123,26 +115,12 @@ class MqttHandler:
         userdata: object,
         msg: mqtt.MQTTMessage,
     ) -> None:
-        # Extract mesh_id from topic: {root}/{mesh_id}
-        parts = msg.topic.split("/")
-        if len(parts) < 2:
-            return
-
-        source_mesh = parts[-1]
-
-        # Ignore our own messages
-        if source_mesh == self._mesh_id:
-            return
-
-        try:
-            payload = base64.b64decode(msg.payload)
-        except Exception:
-            logger.warning("Failed to decode base64 payload from %s", msg.topic)
+        payload = msg.payload
+        if not payload:
             return
 
         logger.debug(
-            "Received packet from mesh '%s': %d bytes",
-            source_mesh,
+            "Received packet: %d bytes",
             len(payload),
         )
         self._on_packet(payload)

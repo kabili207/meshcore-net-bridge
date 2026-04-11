@@ -12,11 +12,11 @@ class MqttConfig:
     port: int = 1883
     username: str | None = None
     password: str | None = None
-    root_topic: str = "meshcore"
+    topic: str = "meshcore/bridge"
 
 
 @dataclass
-class MeshConfig:
+class NodeConfig:
     id: str
 
 
@@ -29,7 +29,7 @@ class SerialConfig:
 @dataclass
 class Config:
     mqtt: MqttConfig
-    mesh: MeshConfig
+    node: NodeConfig
     serial: SerialConfig
 
 
@@ -46,10 +46,10 @@ def load_config(path: Path) -> Config:
     elif "broker" not in raw["mqtt"]:
         errors.append("mqtt.broker is required")
 
-    if "mesh" not in raw:
-        errors.append("missing 'mesh' section")
-    elif "id" not in raw["mesh"]:
-        errors.append("mesh.id is required")
+    if "node" not in raw:
+        errors.append("missing 'node' section")
+    elif "id" not in raw["node"]:
+        errors.append("node.id is required")
 
     if "serial" not in raw:
         errors.append("missing 'serial' section")
@@ -65,10 +65,10 @@ def load_config(path: Path) -> Config:
         port=mqtt_raw.get("port", 1883),
         username=mqtt_raw.get("username"),
         password=mqtt_raw.get("password"),
-        root_topic=mqtt_raw.get("root_topic", "meshcore"),
+        topic=mqtt_raw.get("topic", "meshcore/bridge"),
     )
 
-    mesh = MeshConfig(id=raw["mesh"]["id"])
+    node = NodeConfig(id=raw["node"]["id"])
 
     serial_raw = raw["serial"]
     serial = SerialConfig(
@@ -76,4 +76,4 @@ def load_config(path: Path) -> Config:
         baud=serial_raw.get("baud", 115200),
     )
 
-    return Config(mqtt=mqtt, mesh=mesh, serial=serial)
+    return Config(mqtt=mqtt, node=node, serial=serial)

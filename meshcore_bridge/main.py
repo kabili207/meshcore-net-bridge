@@ -62,7 +62,7 @@ def run(config) -> None:
     serial_handler = SerialHandler(config.serial)
     mqtt_handler = MqttHandler(
         config=config.mqtt,
-        mesh_id=config.mesh.id,
+        node_id=config.node.id,
         on_packet=serial_handler.write_packet,
     )
 
@@ -97,10 +97,9 @@ def run(config) -> None:
         mqtt_handler.connect()
 
         logger.info(
-            "Bridge running: mesh_id='%s', publishing to '%s/%s'",
-            config.mesh.id,
-            config.mqtt.root_topic,
-            config.mesh.id,
+            "Bridge running: node_id='%s', topic='%s'",
+            config.node.id,
+            config.mqtt.topic,
         )
 
         # Main loop: poll serial, forward to MQTT
