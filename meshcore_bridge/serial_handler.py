@@ -7,7 +7,7 @@ import time
 import serial
 
 from .config import SerialConfig
-from .protocol import FrameDecoder, encode_frame
+from .protocol import MAX_PAYLOAD, FrameDecoder, encode_frame
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,17 @@ class SerialHandler:
         """Write a packet to the serial port (thread-safe)."""
         if not self.connected:
             logger.warning("Cannot write: serial port not open")
+            return
+
+        # The firmware silently drops frames larger than this on both TX and RX,
+        # so anything oversized (corrupt or foreign MQTT traffic) is wasted wire
+        # time. Drop it here instead of framing and sending it.
+        if len(payload) > MAX_PAYLOAD:
+            logger.warning(
+                "Dropping oversized packet: %d bytes (max %d)",
+                len(payload),
+                MAX_PAYLOAD,
+            )
             return
 
         frame = encode_frame(payload)

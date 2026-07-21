@@ -1,6 +1,8 @@
 """MQTT handler for MeshCore bridge."""
 
 import logging
+import threading
+import time
 from collections.abc import Callable
 
 import paho.mqtt.client as mqtt
@@ -12,6 +14,13 @@ logger = logging.getLogger(__name__)
 # Reconnection settings
 RECONNECT_DELAY_MIN = 1  # seconds
 RECONNECT_DELAY_MAX = 120  # seconds
+
+# We publish and subscribe to the same topic, and MQTT 3.1.1 has no no_local
+# option, so the broker echoes our own publishes right back. Record each packet
+# we publish and drop the echo if it returns within this window. Full mesh
+# packets carry routing metadata and sender hashes, so a byte-identical payload
+# reappearing this quickly is our echo, not distinct traffic.
+ECHO_SUPPRESS_TTL = 15  # seconds
 
 
 class MqttHandler:
@@ -27,6 +36,14 @@ class MqttHandler:
         self._node_id = node_id
         self._on_packet = on_packet
         self._connected = False
+
+        # Payloads we've published recently, for echo suppression. Maps a packet
+        # to the monotonic timestamps at which we sent it (a list, so repeated
+        # sends of the same bytes each get consumed by exactly one echo).
+        # Accessed from both the main thread (publish) and paho's network thread
+        # (receive), so guard it with a lock.
+        self._sent_lock = threading.Lock()
+        self._recent_sent: dict[bytes, list[float]] = {}
 
         client_id = f"mc-bridge-{node_id}"
         self._client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id)
@@ -72,8 +89,47 @@ class MqttHandler:
             logger.debug("Cannot publish: not connected to MQTT broker")
             return
 
+        # Record before publishing so the entry is in place before the echo can
+        # come back.
+        now = time.monotonic()
+        with self._sent_lock:
+            self._purge_expired(now)
+            self._recent_sent.setdefault(payload, []).append(now)
+
         self._client.publish(self._topic, payload)
         logger.debug("Published packet to %s: %d bytes", self._topic, len(payload))
+
+    def _purge_expired(self, now: float) -> None:
+        """Drop sent-packet records older than the suppression window.
+
+        Caller must hold _sent_lock.
+        """
+        for key in list(self._recent_sent):
+            stamps = self._recent_sent[key]
+            while stamps and now - stamps[0] > ECHO_SUPPRESS_TTL:
+                stamps.pop(0)
+            if not stamps:
+                del self._recent_sent[key]
+
+    def _is_own_echo(self, payload: bytes) -> bool:
+        """Return True if this payload is an echo of one we recently published.
+
+        Consumes the matching record so each publish suppresses at most one echo.
+        """
+        now = time.monotonic()
+        with self._sent_lock:
+            stamps = self._recent_sent.get(payload)
+            if not stamps:
+                return False
+            while stamps and now - stamps[0] > ECHO_SUPPRESS_TTL:
+                stamps.pop(0)
+            if not stamps:
+                del self._recent_sent[payload]
+                return False
+            stamps.pop(0)  # consume this echo
+            if not stamps:
+                del self._recent_sent[payload]
+            return True
 
     def _handle_connect(
         self,
@@ -117,6 +173,10 @@ class MqttHandler:
     ) -> None:
         payload = msg.payload
         if not payload:
+            return
+
+        if self._is_own_echo(payload):
+            logger.debug("Suppressed own echoed packet: %d bytes", len(payload))
             return
 
         logger.debug(

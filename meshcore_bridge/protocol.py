@@ -13,6 +13,12 @@ FRAME_MAGIC = b"\xc0\x3e"
 HEADER_SIZE = 4  # magic (2) + length (2)
 CHECKSUM_SIZE = 2
 
+# Largest payload the firmware will accept. RS232Bridge rejects any frame with
+# a length field greater than MAX_TRANS_UNIT + 1 (255 + 1). We enforce the same
+# cap so line noise that fakes a magic word plus a huge length can't stall the
+# decoder waiting for tens of KB that never arrive.
+MAX_PAYLOAD = 256
+
 
 def fletcher16(data: bytes) -> int:
     """Calculate Fletcher-16 checksum over data."""
@@ -71,6 +77,15 @@ class FrameDecoder:
                 break
 
             length = (self._buffer[2] << 8) | self._buffer[3]
+
+            # Reject impossible lengths before committing to buffer that many
+            # bytes. A false magic word followed by a large length would
+            # otherwise swallow every real frame until the phantom frame
+            # completes. Drop the leading magic byte and rescan.
+            if length > MAX_PAYLOAD:
+                del self._buffer[:1]
+                continue
+
             frame_size = HEADER_SIZE + length + CHECKSUM_SIZE
 
             # Wait for complete frame
